@@ -36,7 +36,7 @@ const char	default_parent_pattern[] = "^sys_|^do_page_fault";
 const char	*parent_pattern = default_parent_pattern;
 const char	*default_sort_order = "comm,dso,symbol";
 const char	default_branch_sort_order[] = "comm,dso_from,symbol_from,symbol_to,cycles";
-const char	default_mem_sort_order[] = "local_weight,mem,sym,dso,symbol_daddr,dso_daddr,snoop,tlb,locked";
+const char	default_mem_sort_order[] = "local_weight,mem,sym,dso,symbol_daddr,dso_daddr,snoop,tlb,locked,hw_dsrc";
 const char	default_top_sort_order[] = "dso,symbol";
 const char	default_diff_sort_order[] = "dso,symbol";
 const char	default_tracepoint_sort_order[] = "trace";
@@ -1315,6 +1315,53 @@ static int hist_entry__dcacheline_snprintf(struct hist_entry *he, char *bf,
 	return _hist_entry__sym_snprintf(ms, addr, level, bf, size, width);
 }
 
+static int64_t sort__hw_dsrc_cmp(struct hist_entry *left, struct hist_entry *right)
+{
+	union perf_mem_data_src data_src_l;
+	union perf_mem_data_src data_src_r;
+
+	if (left->mem_info)
+		data_src_l = left->mem_info->data_src;
+	else
+		data_src_l.mem_hw_dsrc = 0;
+
+	if (right->mem_info)
+		data_src_r = right->mem_info->data_src;
+	else
+		data_src_r.mem_hw_dsrc = 0;
+
+	return (int64_t)(data_src_r.mem_hw_dsrc - data_src_l.mem_hw_dsrc);
+}
+
+/*
+ * Hardware data source in perf_mem_data_src is implementation defined
+ * by processor. The provider should implement its own definition,
+ * otherwise the raw number is printed.
+ */
+const char * __weak hw_dsrc_translate(union perf_mem_data_src data_src)
+{
+	(void)data_src;
+	return NULL;
+}
+
+static int hist_entry__hw_dsrc_snprintf(struct hist_entry *he, char *bf,
+					  size_t size, unsigned int width)
+{
+	union perf_mem_data_src data_src;
+	const char *str;
+
+	if (he->mem_info)
+		data_src = he->mem_info->data_src;
+	else
+		data_src.mem_hw_dsrc = 0;
+
+	str = hw_dsrc_translate(data_src);
+	if (str)
+		return repsep_snprintf(bf, size, "%-*s", width, str);
+	else
+		return repsep_snprintf(bf, size, "%-*d", width, data_src.mem_hw_dsrc);
+}
+
 struct sort_entry sort_mispredict = {
 	.se_header	= "Branch Mispredicted",
 	.se_cmp		= sort__mispredict_cmp,
@@ -1419,6 +1466,13 @@ struct sort_entry sort_mem_dcacheline = {
 	.se_cmp		= sort__dcacheline_cmp,
 	.se_snprintf	= hist_entry__dcacheline_snprintf,
 	.se_width_idx	= HISTC_MEM_DCACHELINE,
+};
+
+struct sort_entry sort_mem_hw_dsrc = {
+	.se_header	= "Hardware Data Source",
+	.se_cmp		= sort__hw_dsrc_cmp,
+	.se_snprintf	= hist_entry__hw_dsrc_snprintf,
+	.se_width_idx	= HISTC_MEM_HW_DSRC,
 };
 
 static int64_t
@@ -1740,6 +1794,7 @@ static struct sort_dimension memory_sort_dimensions[] = {
 	DIM(SORT_MEM_SNOOP, "snoop", sort_mem_snoop),
 	DIM(SORT_MEM_DCACHELINE, "dcacheline", sort_mem_dcacheline),
 	DIM(SORT_MEM_PHYS_DADDR, "phys_daddr", sort_mem_phys_daddr),
+	DIM(SORT_MEM_HW_DSRC, "hw_dsrc", sort_mem_hw_dsrc),
 };
 
 #undef DIM

@@ -323,13 +323,13 @@ static int report_events(int argc, const char **argv, struct perf_mem *mem)
 	if (!(mem->operation & MEM_OPERATION_LOAD)) {
 		if (mem->phys_addr)
 			rep_argv[i++] = "--sort=mem,sym,dso,symbol_daddr,"
-					"dso_daddr,tlb,locked,phys_daddr";
+					"dso_daddr,tlb,locked,phys_daddr,hw_dsrc";
 		else
 			rep_argv[i++] = "--sort=mem,sym,dso,symbol_daddr,"
-					"dso_daddr,tlb,locked";
+					"dso_daddr,tlb,locked,hw_dsrc";
 	} else if (mem->phys_addr)
 		rep_argv[i++] = "--sort=local_weight,mem,sym,dso,symbol_daddr,"
-				"dso_daddr,snoop,tlb,locked,phys_daddr";
+				"dso_daddr,snoop,tlb,locked,phys_daddr,hw_dsrc";
 
 	for (j = 1; j < argc; j++, i++)
 		rep_argv[i] = argv[j];

@@ -33,6 +33,7 @@
 #include "arm-spe.h"
 #include "arm-spe-decoder/arm-spe-decoder.h"
 #include "arm-spe-decoder/arm-spe-pkt-decoder.h"
+#include "../../arch/arm64/include/asm/cputype.h"
 
 #define MAX_TIMESTAMP (~0ULL)
 
@@ -353,7 +354,61 @@ static u64 arm_spe__synth_data_source(const struct arm_spe_record *record)
 			data_src.mem_dtlb |= PERF_MEM_TLB_HIT;
 	}
 
+	data_src.mem_hw_dsrc = record->data_src;
+
 	return data_src.val;
+}
+
+static const struct midr_range neoverse_spe[] = {
+	MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N1),
+	MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N2),
+	MIDR_ALL_VERSIONS(MIDR_NEOVERSE_V1),
+	{},
+};
+
+static const char *hw_dsrc_altra_translate(union perf_mem_data_src data_src)
+{
+	/* arm-spe has valid hardware data source in load operation only */
+	if (data_src.mem_op == PERF_MEM_OP_STORE)
+		return "No Source";
+
+	switch (data_src.mem_hw_dsrc) {
+		case 0x0:
+			return "L1 data cache";
+		case 0x8:
+			return "L2 cache";
+		case 0x9:
+			return "Peer CPU";
+		case 0xa:
+			return "Local Cluster";
+		case 0xb:
+			return "System cache";
+		case 0xc:
+			return "Peer Cluster";
+		case 0xd:
+			return "Remote";
+		case 0xe:
+			return "DRAM";
+		default:
+			return "Invalid";
+	}
+}
+
+const char *hw_dsrc_translate(union perf_mem_data_src data_src)
+{
+	static u64 midr = 0;
+
+	if (!midr) {
+		char cpuid[128];
+
+		if (get_cpuid(cpuid, sizeof(cpuid)))
+			return NULL;
+		midr = strtol(cpuid, NULL, 16);
+	}
+
+	if (is_midr_in_range(midr, neoverse_spe))
+		return hw_dsrc_altra_translate(data_src);
+	return NULL;
 }
 
 static int arm_spe_sample(struct arm_spe_queue *speq)

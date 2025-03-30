@@ -28,4 +28,5 @@ int arm_spe_process_auxtrace_info(union perf_event *event,
 				  struct perf_session *session);
 
 struct perf_event_attr *arm_spe_pmu_default_config(struct perf_pmu *arm_spe_pmu);
+const char *hw_dsrc_translate(union perf_mem_data_src data_src);
 #endif

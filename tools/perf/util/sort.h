@@ -253,6 +253,7 @@ enum sort_type {
 	SORT_MEM_LVL,
 	SORT_MEM_SNOOP,
 	SORT_MEM_DCACHELINE,
+	SORT_MEM_HW_DSRC,
 	SORT_MEM_IADDR_SYMBOL,
 	SORT_MEM_PHYS_DADDR,
 };
@@ -314,4 +315,5 @@ sort__dcacheline_cmp(struct hist_entry *left, struct hist_entry *right);
 int64_t
 _sort__sym_cmp(struct symbol *sym_l, struct symbol *sym_r);
 char *hist_entry__srcline(struct hist_entry *he);
+const char *hw_dsrc_translate(union perf_mem_data_src data_src);
 #endif	/* __PERF_SORT_H */

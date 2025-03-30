@@ -31,6 +31,7 @@ enum arm_spe_op_type {
 
 struct arm_spe_record {
 	enum arm_spe_sample_type type;
+	u16 data_src;
 	int err;
 	u32 op;
 	u64 from_ip;
