@@ -1,20 +1,102 @@
 # SPDX-License-Identifier: GPL-2.0-only
-config HAVE_LIVEPATCH
+config HAVE_LIVEPATCH_FTRACE
 	bool
 	help
-	  Arch supports kernel live patching
+	  Arch supports kernel live patching based on ftrace
+
+config HAVE_LIVEPATCH_WO_FTRACE
+	bool
+	help
+	  Arch supports kernel live patching without ftrace
+
+if HAVE_LIVEPATCH_FTRACE || HAVE_LIVEPATCH_WO_FTRACE
+menu "Enable Livepatch"
+
 
 config LIVEPATCH
 	bool "Kernel Live Patching"
-	depends on DYNAMIC_FTRACE_WITH_REGS
 	depends on MODULES
 	depends on SYSFS
 	depends on KALLSYMS_ALL
-	depends on HAVE_LIVEPATCH
+	depends on HAVE_LIVEPATCH_FTRACE || HAVE_LIVEPATCH_WO_FTRACE
 	depends on !TRIM_UNUSED_KSYMS
+	depends on DEBUG_INFO
+	default n
 	help
 	  Say Y here if you want to support kernel live patching.
 	  This option has no runtime impact until a kernel "patch"
 	  module uses the interface provided by this option to register
 	  a patch, causing calls to patched functions to be redirected
 	  to new function code contained in the patch module.
+
+choice
+	prompt "live patching method"
+	depends on LIVEPATCH
+	help
+	  Live patching implementation method configuration.
+
+config LIVEPATCH_FTRACE
+	bool "based on ftrace"
+	depends on HAVE_LIVEPATCH_FTRACE
+	depends on DYNAMIC_FTRACE_WITH_REGS
+	select LIVEPATCH_PER_TASK_CONSISTENCY
+	help
+	  Supports kernel live patching based on ftrace
+
+config LIVEPATCH_WO_FTRACE
+	bool "without ftrace"
+	depends on HAVE_LIVEPATCH_WO_FTRACE
+	select LIVEPATCH_STOP_MACHINE_CONSISTENCY
+	help
+	  Supports kernel live patching without ftrace
+
+endchoice
+
+choice
+	prompt "live patching consistency model"
+	depends on LIVEPATCH
+	default LIVEPATCH_PER_TASK_CONSISTENCY if LIVEPATCH_FTRACE
+	default LIVEPATCH_STOP_MACHINE_CONSISTENCY if LIVEPATCH_WO_FTRACE
+	help
+	  Livepatch consistency model configuration.
+
+config LIVEPATCH_PER_TASK_CONSISTENCY
+	bool "per task consistency"
+	depends on LIVEPATCH_FTRACE
+	help
+	  Use basic per-task consistency model
+	  It's a hybrid of kGraft and kpatch:
+	  uses kGraft's per-task consistency and syscall
+	  barrier switching combined with kpatch's stack
+	  trace switching. There are also a number of
+	  fallback options which make it quite flexible.
+
+config LIVEPATCH_STOP_MACHINE_CONSISTENCY
+	bool "stop machine consistency"
+	depends on LIVEPATCH_WO_FTRACE
+	help
+	  Use stop machine consistency model
+	  stop-machine consistency and kpatch's stack
+	  trace checking.
+
+endchoice
+
+config LIVEPATCH_STACK
+	bool "Enforcing the patch stacking principle"
+	depends on LIVEPATCH_FTRACE || LIVEPATCH_WO_FTRACE
+	default y
+	help
+	  Say N here if you want to remove the patch stacking principle.
+
+config LIVEPATCH_RESTRICT_KPROBE
+	bool "Enforing check livepatch and kprobe restrict"
+	depends on LIVEPATCH_WO_FTRACE
+	depends on KPROBES
+	default y
+	help
+	  Livepatch without ftrace and kprobe are conflicting.
+	  We should not patch for the functions where registered with kprobe,
+	  and vice versa.
+	  Say Y here if you want to check those.
+endmenu
+endif

@@ -23,6 +23,10 @@
 #define KLP_UNPATCHED	 0
 #define KLP_PATCHED	 1
 
+#define KLP_NORMAL_FORCE	0
+#define KLP_ENFORCEMENT		1
+#define KLP_STACK_OPTIMIZE	2
+
 /**
  * struct klp_func - function structure for live patching
  * @old_name:	name of the function to be patched
@@ -66,6 +70,7 @@ struct klp_func {
 	 * in kallsyms for the given object is used.
 	 */
 	unsigned long old_sympos;
+	int force;
 
 	/* internal */
 	void *old_func;
@@ -75,10 +80,26 @@ struct klp_func {
 	unsigned long old_size, new_size;
 	bool nop;
 	bool patched;
+#ifdef CONFIG_LIVEPATCH_PER_TASK_CONSISTENCY
 	bool transition;
+#endif
+#if defined(CONFIG_LIVEPATCH_WO_FTRACE) && defined(CONFIG_PPC64)
+	struct module *old_mod;
+#ifdef PPC64_ELF_ABI_v1
+	struct module *this_mod;
+	func_descr_t new_func_descr;
+#endif
+#endif
+	void *func_node;
 };
 
 struct klp_object;
+
+#ifdef CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY
+struct klp_hook {
+	void (*hook)(void);
+};
+#endif
 
 /**
  * struct klp_callbacks - pre/post live-(un)patch callback structure
@@ -119,6 +140,10 @@ struct klp_object {
 	/* external */
 	const char *name;
 	struct klp_func *funcs;
+#ifdef CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY
+	struct klp_hook *hooks_load;
+	struct klp_hook *hooks_unload;
+#endif
 	struct klp_callbacks callbacks;
 
 	/* internal */
@@ -193,8 +218,19 @@ struct klp_patch {
 #define klp_for_each_func(obj, func)	\
 	list_for_each_entry(func, &obj->func_list, node)
 
+#ifdef CONFIG_LIVEPATCH_PER_TASK_CONSISTENCY
 int klp_enable_patch(struct klp_patch *);
+#elif defined(CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY)
+int klp_register_patch(struct klp_patch *patch);
+int klp_unregister_patch(struct klp_patch *patch);
+#endif
 
+int klp_apply_section_relocs(struct module *pmod, Elf_Shdr *sechdrs,
+			     const char *shstrtab, const char *strtab,
+			     unsigned int symindex, unsigned int secindex,
+			     const char *objname);
+
+#ifdef CONFIG_LIVEPATCH_PER_TASK_CONSISTENCY
 /* Called from the module loader during module coming/going states */
 int klp_module_coming(struct module *mod);
 void klp_module_going(struct module *mod);
@@ -231,10 +267,20 @@ void klp_shadow_free_all(unsigned long id, klp_shadow_dtor_t dtor);
 struct klp_state *klp_get_state(struct klp_patch *patch, unsigned long id);
 struct klp_state *klp_get_prev_state(unsigned long id);
 
-int klp_apply_section_relocs(struct module *pmod, Elf_Shdr *sechdrs,
-			     const char *shstrtab, const char *strtab,
-			     unsigned int symindex, unsigned int secindex,
-			     const char *objname);
+#else /* !CONFIG_LIVEPATCH_PER_TASK_CONSISTENCY */
+
+static inline int klp_module_coming(struct module *mod) { return 0; }
+static inline void klp_module_going(struct module *mod) {}
+static inline bool klp_patch_pending(struct task_struct *task) { return false; }
+static inline void klp_update_patch_state(struct task_struct *task) {}
+static inline void klp_copy_process(struct task_struct *child) {}
+static inline bool klp_have_reliable_stack(void) { return true; }
+
+#ifndef klp_smp_isb
+#define klp_smp_isb()
+#endif
+
+#endif /* CONFIG_LIVEPATCH_PER_TASK_CONSISTENCY */
 
 #else /* !CONFIG_LIVEPATCH */
 

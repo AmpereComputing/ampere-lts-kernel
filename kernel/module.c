@@ -2063,7 +2063,20 @@ static void frob_writable_data(const struct module_layout *layout,
 		   (layout->size - layout->ro_after_init_size) >> PAGE_SHIFT);
 }
 
-static void module_enable_ro(const struct module *mod, bool after_init)
+/* livepatching wants to disable read-only so it can frob module. */
+void module_disable_ro(const struct module *mod)
+{
+	if (!rodata_enabled)
+		return;
+
+	frob_text(&mod->core_layout, set_memory_rw);
+	frob_rodata(&mod->core_layout, set_memory_rw);
+	frob_ro_after_init(&mod->core_layout, set_memory_rw);
+	frob_text(&mod->init_layout, set_memory_rw);
+	frob_rodata(&mod->init_layout, set_memory_rw);
+}
+
+void module_enable_ro(const struct module *mod, bool after_init)
 {
 	if (!rodata_enabled)
 		return;
@@ -2108,7 +2121,6 @@ static int module_enforce_rwx_sections(Elf_Ehdr *hdr, Elf_Shdr *sechdrs,
 
 #else /* !CONFIG_STRICT_MODULE_RWX */
 static void module_enable_nx(const struct module *mod) { }
-static void module_enable_ro(const struct module *mod, bool after_init) {}
 static int module_enforce_rwx_sections(Elf_Ehdr *hdr, Elf_Shdr *sechdrs,
 				       char *secstrings, struct module *mod)
 {
@@ -3089,7 +3101,10 @@ static int check_modinfo_livepatch(struct module *mod, struct load_info *info)
 		add_taint_module(mod, TAINT_LIVEPATCH, LOCKDEP_STILL_OK);
 		pr_notice_once("%s: tainting kernel with TAINT_LIVEPATCH\n",
 			       mod->name);
-	}
+
+		set_mod_klp_rel_state(mod, MODULE_KLP_REL_UNDO);
+	} else
+		set_mod_klp_rel_state(mod, MODULE_KLP_REL_NONE);
 
 	return 0;
 }
@@ -3504,7 +3519,7 @@ static int check_module_license_and_versions(struct module *mod)
 	return 0;
 }
 
-static void flush_module_icache(const struct module *mod)
+void flush_module_icache(const struct module *mod)
 {
 	/*
 	 * Flush the instruction cache, since we've played with text.
